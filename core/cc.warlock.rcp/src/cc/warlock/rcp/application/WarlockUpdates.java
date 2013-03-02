@@ -23,49 +23,38 @@ package cc.warlock.rcp.application;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.InvocationTargetException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 
-import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.jface.dialogs.MessageDialog;
-import org.eclipse.jface.dialogs.ProgressMonitorDialog;
-import org.eclipse.jface.operation.IRunnableWithProgress;
+import org.eclipse.equinox.p2.core.IProvisioningAgent;
+import org.eclipse.equinox.p2.operations.ProvisioningSession;
+import org.eclipse.equinox.p2.operations.Update;
+import org.eclipse.equinox.p2.operations.UpdateOperation;
 import org.eclipse.jface.window.Window;
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.PlatformUI;
-import org.eclipse.update.configuration.IConfiguredSite;
-import org.eclipse.update.configuration.ILocalSite;
-import org.eclipse.update.core.IFeature;
-import org.eclipse.update.core.IFeatureReference;
-import org.eclipse.update.core.ISite;
-import org.eclipse.update.core.SiteManager;
-import org.eclipse.update.core.VersionedIdentifier;
-import org.eclipse.update.operations.IInstallFeatureOperation;
-import org.eclipse.update.operations.OperationsManager;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.FrameworkUtil;
+import org.osgi.framework.ServiceReference;
 
 import cc.warlock.rcp.plugin.Warlock2Plugin;
 
 public class WarlockUpdates {
 
-	public static List<IFeatureReference> promptUpgrade (Map<IFeatureReference, VersionedIdentifier> newVersions)
+	public static List<Update> promptUpgrade (List<Update> updates)
 	{
 		Shell shell = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell();
-		WarlockUpdateDialog dialog = new WarlockUpdateDialog(shell, newVersions);
+		WarlockUpdateDialog dialog = new WarlockUpdateDialog(shell, updates);
 		int response = dialog.open();
 		
 		if (response == Window.OK)
 		{
-			return dialog.getSelectedFeatures();
+			return dialog.getSelectedUpdates();
 		}
 		
 		return Collections.emptyList();
@@ -108,12 +97,30 @@ public class WarlockUpdates {
 	
 	public static void checkForUpdates (final IProgressMonitor monitor)
 	{
-		try {
+		//try {
 			Properties properties = getUpdateProperties();
 			String url = properties.getProperty(UPDATE_SITE);
 			if (url == null)
 				return;
-			
+
+			BundleContext context = FrameworkUtil.getBundle(WarlockUpdates.class).getBundleContext();
+		    ServiceReference<?> reference = context
+	                .getServiceReference(IProvisioningAgent.SERVICE_NAME);
+	        if (reference == null)
+	            return;
+	        Object obj = context.getService(reference);
+	        IProvisioningAgent agent = (IProvisioningAgent) obj;
+	        ProvisioningSession session = new ProvisioningSession(agent);
+	        UpdateOperation update = new UpdateOperation(session);
+	        Update[] updates = update.getPossibleUpdates();
+	        IStatus result = update.resolveModal(monitor);
+	        if (result.isOK()) {
+	            update.getProvisioningJob(monitor).schedule();
+	        } else {
+	            // can't update for some reason
+	        }
+	        context.ungetService(reference);
+/*
 			ISite updateSite = SiteManager.getSite(new URL(url), monitor);
 			IFeatureReference[] featureRefs = updateSite.getFeatureReferences();
 			final ILocalSite localSite = SiteManager.getLocalSite();
@@ -167,7 +174,7 @@ public class WarlockUpdates {
 											
 											IFeatureReference featureRef = featuresToUpgrade.get(0);
 											IFeature feature = featureRef.getFeature(monitor);
-											/* Force a restart. Because everyone reports bugs before restarting. */
+											// Force a restart. Because everyone reports bugs before restarting.
 											PlatformUI.getWorkbench().restart();
 										}
 									} catch (CoreException e) {
@@ -195,6 +202,6 @@ public class WarlockUpdates {
 		} catch (CoreException e) {
 			MessageDialog.openError(Display.getDefault().getActiveShell(), "Error updating",
 					"There was an error while attempting to update Warlock: " + e.getMessage());
-		}
+		}*/
 	}
 }
